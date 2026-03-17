@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     # DeepL
     DEEPL_API_KEY: str = ""
 
+    # LibreTranslate (self-hosted fallback)
+    LIBRETRANSLATE_URL: str = "http://libretranslate:5000"
+
     # Derived
     @property
     def DATABASE_URL(self) -> str:

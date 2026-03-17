@@ -26,12 +26,46 @@
     </div>
 
     <template v-else>
+      <!-- ── Filters ── -->
+      <div class="filters-bar">
+        <select v-model="filterYear" @change="applyFilters">
+          <option :value="null">Todos los años</option>
+          <option v-for="y in filterOptions.years" :key="y" :value="y">{{ y }}</option>
+        </select>
+        <select v-model="filterCycle" @change="applyFilters">
+          <option :value="null">Todos los ciclos</option>
+          <option v-for="c in filterOptions.cycles" :key="c" :value="c">Ciclo {{ c }}</option>
+        </select>
+        <select v-model="filterCode" @change="applyFilters">
+          <option :value="null">Todos los códigos</option>
+          <option v-for="c in filterOptions.codes" :key="c" :value="c">{{ c }}</option>
+        </select>
+      </div>
+
       <!-- ── Chart ── -->
       <div class="card">
         <h2>📊 Comentarios por sentimiento</h2>
         <p class="card-sub">Cantidad de comentarios positivos, neutros y negativos por año y ciclo.</p>
         <div class="chart-wrap">
-          <Bar :data="chartData" :options="chartOptions" />
+          <Line :data="chartData" :options="chartOptions" />
+        </div>
+      </div>
+
+      <!-- ── Secondary charts ── -->
+      <div class="charts-grid">
+        <div class="card">
+          <h2>📊 Por código</h2>
+          <p class="card-sub">Comentarios por carrera.</p>
+          <div class="chart-wrap-sm">
+            <Bar :data="byCodeData" :options="barOptions" />
+          </div>
+        </div>
+        <div class="card">
+          <h2>📊 Por ciclo</h2>
+          <p class="card-sub">Comentarios por ciclo académico.</p>
+          <div class="chart-wrap-sm">
+            <Bar :data="byCycleData" :options="barOptions" />
+          </div>
         </div>
       </div>
 
@@ -48,14 +82,28 @@
             <div class="topic-keywords">
               <span v-for="kw in t.keywords" :key="kw" class="kw-chip">{{ kw }}</span>
             </div>
-            <div class="topic-count">{{ t.comment_count }} comentario{{ t.comment_count !== 1 ? 's' : '' }}</div>
+            <div class="topic-sentiment-bar" :title="`${t.sentiment.positive} pos · ${t.sentiment.neutral} neu · ${t.sentiment.negative} neg`">
+              <div class="tsb-pos" :style="{ flex: t.sentiment.positive }"></div>
+              <div class="tsb-neu" :style="{ flex: t.sentiment.neutral }"></div>
+              <div class="tsb-neg" :style="{ flex: t.sentiment.negative }"></div>
+            </div>
+            <div class="topic-sentiment-legend">
+              <span class="tsb-label pos">😊 {{ t.sentiment.positive }}</span>
+              <span class="tsb-label neu">😐 {{ t.sentiment.neutral }}</span>
+              <span class="tsb-label neg">😟 {{ t.sentiment.negative }}</span>
+            </div>
+            <div class="tsb-total">{{ t.comment_count }} comentario{{ t.comment_count !== 1 ? 's' : '' }}</div>
           </div>
         </div>
       </div>
 
       <!-- ── Evaluations table ── -->
       <div class="card" style="margin-top:1.5rem">
-        <h2>📋 Evaluaciones</h2>
+        <div class="table-header">
+          <h2>📋 Evaluaciones</h2>
+          <span class="total-count">{{ evalTotal }} evaluaciones</span>
+        </div>
+
         <table class="eval-table">
           <thead>
             <tr>
@@ -91,6 +139,20 @@
             </tr>
           </tbody>
         </table>
+
+        <!-- Pager -->
+        <div class="pager">
+          <button class="pager-btn" :disabled="evalPage === 1" @click="goToPage(1)">«</button>
+          <button class="pager-btn" :disabled="evalPage === 1" @click="goToPage(evalPage - 1)">‹</button>
+          <span class="pager-info">Página {{ evalPage }} de {{ evalPages }}</span>
+          <button class="pager-btn" :disabled="evalPage === evalPages" @click="goToPage(evalPage + 1)">›</button>
+          <button class="pager-btn" :disabled="evalPage === evalPages" @click="goToPage(evalPages)">»</button>
+          <select class="pager-size" :value="evalPageSize" @change="changePageSize($event.target.value)">
+            <option value="25">25 / pág.</option>
+            <option value="50">50 / pág.</option>
+            <option value="100">100 / pág.</option>
+          </select>
+        </div>
       </div>
     </template>
 
@@ -157,19 +219,33 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from "vue";
-import { Bar } from "vue-chartjs";
+import { Line, Bar } from "vue-chartjs";
 import {
   Chart as ChartJS,
-  BarElement, CategoryScale, LinearScale, Tooltip, Legend,
+  LineElement, BarElement, PointElement, CategoryScale, LinearScale, Tooltip, Legend, Filler,
 } from "chart.js";
 import api from "../api";
 
-ChartJS.register(BarElement, CategoryScale, LinearScale, Tooltip, Legend);
+ChartJS.register(LineElement, BarElement, PointElement, CategoryScale, LinearScale, Tooltip, Legend, Filler);
 
 const loading = ref(true);
 const summary = ref([]);
 const evaluations = ref([]);
+const evalTotal = ref(0);
+const evalPage = ref(1);
+const evalPages = ref(1);
+const evalPageSize = ref(25);
 const detail = ref(null);
+
+// ── Secondary charts ─────────────────────────────────────────────────────────
+const byCode  = ref([]);
+const byCycle = ref([]);
+
+// ── Filters ──────────────────────────────────────────────────────────────────
+const filterOptions = ref({ years: [], cycles: [], codes: [] });
+const filterYear  = ref(null);
+const filterCycle = ref(null);
+const filterCode  = ref(null);
 
 // ── Topics ──────────────────────────────────────────────────────────────────
 const topics = ref([]);
@@ -210,16 +286,61 @@ onUnmounted(() => {
   if (topicPollTimer) clearInterval(topicPollTimer);
 });
 
-onMounted(async () => {
-  const [s, e] = await Promise.all([
-    api.get("/reports/summary"),
-    api.get("/reports/evaluations"),
+async function loadEvaluations(page = evalPage.value, pageSize = evalPageSize.value) {
+  const params = await buildFilterParams();
+  params.set("page", page);
+  params.set("page_size", pageSize);
+  const res = await api.get(`/reports/evaluations?${params}`);
+  evaluations.value = res.data.items;
+  evalTotal.value = res.data.total;
+  evalPage.value = res.data.page;
+  evalPages.value = res.data.pages;
+}
+
+async function buildFilterParams() {
+  const p = new URLSearchParams();
+  if (filterYear.value)  p.set("year", filterYear.value);
+  if (filterCycle.value) p.set("cycle", filterCycle.value);
+  if (filterCode.value)  p.set("code_prefix", filterCode.value);
+  return p;
+}
+
+async function loadSummary() {
+  const p = await buildFilterParams();
+  const [s, bc, bcy] = await Promise.all([
+    api.get(`/reports/summary?${p}`),
+    api.get(`/reports/summary/by-code?${p}`),
+    api.get(`/reports/summary/by-cycle?${p}`),
   ]);
   summary.value = s.data;
-  evaluations.value = e.data;
+  byCode.value  = bc.data;
+  byCycle.value = bcy.data;
+}
+
+async function applyFilters() {
+  await Promise.all([loadSummary(), loadEvaluations(1)]);
+}
+
+async function goToPage(page) {
+  await loadEvaluations(page);
+}
+
+async function changePageSize(size) {
+  evalPageSize.value = Number(size);
+  await loadEvaluations(1);
+}
+
+onMounted(async () => {
+  const [f] = await Promise.all([
+    api.get("/reports/filters"),
+    loadSummary(),
+    loadEvaluations(),
+  ]);
+  filterOptions.value = f.data;
   loading.value = false;
   await loadTopics();
 });
+
 
 async function openDetail(id) {
   const res = await api.get(`/reports/evaluations/${id}`);
@@ -233,17 +354,29 @@ const chartData = computed(() => ({
     {
       label: "😊 Positivo",
       data: summary.value.map((r) => r.positive),
-      backgroundColor: "#4caf8a",
+      borderColor: "#4caf8a",
+      backgroundColor: "rgba(76,175,138,.1)",
+      pointBackgroundColor: "#4caf8a",
+      tension: 0.3,
+      fill: false,
     },
     {
       label: "😐 Neutro",
       data: summary.value.map((r) => r.neutral),
-      backgroundColor: "#f5a623",
+      borderColor: "#f5a623",
+      backgroundColor: "rgba(245,166,35,.1)",
+      pointBackgroundColor: "#f5a623",
+      tension: 0.3,
+      fill: false,
     },
     {
       label: "😟 Negativo",
       data: summary.value.map((r) => r.negative),
-      backgroundColor: "#e94560",
+      borderColor: "#e94560",
+      backgroundColor: "rgba(233,69,96,.1)",
+      pointBackgroundColor: "#e94560",
+      tension: 0.3,
+      fill: false,
     },
   ],
 }));
@@ -258,6 +391,37 @@ const chartOptions = {
   scales: {
     x: { grid: { display: false } },
     y: { beginAtZero: true, ticks: { stepSize: 1 } },
+  },
+};
+
+function barDatasets(rows) {
+  return [
+    { label: "😊 Positivo", data: rows.map((r) => r.positive), backgroundColor: "#4caf8a" },
+    { label: "😐 Neutro",   data: rows.map((r) => r.neutral),  backgroundColor: "#f5a623" },
+    { label: "😟 Negativo", data: rows.map((r) => r.negative), backgroundColor: "#e94560" },
+  ];
+}
+
+const byCodeData = computed(() => ({
+  labels: byCode.value.map((r) => r.label),
+  datasets: barDatasets(byCode.value),
+}));
+
+const byCycleData = computed(() => ({
+  labels: byCycle.value.map((r) => r.label),
+  datasets: barDatasets(byCycle.value),
+}));
+
+const barOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { position: "top" },
+    tooltip: { mode: "index", intersect: false },
+  },
+  scales: {
+    x: { grid: { display: false } },
+    y: { beginAtZero: true },
   },
 };
 
@@ -302,13 +466,25 @@ h1 { margin-bottom: .4rem; }
 .topic-keywords { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: .5rem; }
 .kw-chip { background: #e8eaf6; color: #3949ab; font-size: .75rem; font-weight: 600;
            padding: .15rem .5rem; border-radius: 12px; }
-.topic-count { font-size: .78rem; color: #888; }
+.topic-sentiment-bar { display: flex; height: 6px; border-radius: 4px; overflow: hidden;
+                       margin: .55rem 0 .3rem; background: #eee; }
+.tsb-pos { background: #4caf8a; }
+.tsb-neu { background: #f5a623; }
+.tsb-neg { background: #e94560; }
+.topic-sentiment-legend { display: flex; gap: .5rem; }
+.tsb-label { font-size: .72rem; font-weight: 600; }
+.tsb-label.pos { color: #1a7a4a; }
+.tsb-label.neu { color: #b26a00; }
+.tsb-label.neg { color: #c0392b; }
+.tsb-total { font-size: .75rem; color: #999; margin-top: .25rem; }
 
 .card { background: #fff; border-radius: 12px; padding: 1.5rem;
         box-shadow: 0 2px 8px rgba(0,0,0,.08); }
 .card h2 { margin-bottom: .25rem; }
 .card-sub { color: #777; font-size: .88rem; margin-bottom: 1.25rem; }
 .chart-wrap { height: 320px; }
+.chart-wrap-sm { height: 160px; }
+.charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem; }
 
 /* Table */
 .eval-table { width: 100%; border-collapse: collapse; font-size: .9rem; margin-top: .75rem; }
@@ -326,6 +502,25 @@ h1 { margin-bottom: .4rem; }
 .btn-detail { background: none; border: 1px solid #1a1a2e; color: #1a1a2e; padding: .3rem .7rem;
               border-radius: 6px; font-size: .82rem; cursor: pointer; transition: all .15s; }
 .btn-detail:hover { background: #1a1a2e; color: #fff; }
+
+.table-header { display: flex; align-items: baseline; gap: .75rem; margin-bottom: .75rem; }
+.table-header h2 { margin: 0; }
+.total-count { font-size: .82rem; color: #999; }
+
+.filters-bar { display: flex; gap: .6rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+.filters-bar select { font-size: .85rem; border: 1px solid #ddd; border-radius: 6px;
+                      padding: .35rem .65rem; color: #333; cursor: pointer; background: #fff;
+                      box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+
+.pager { display: flex; align-items: center; gap: .4rem; justify-content: center;
+         padding-top: 1rem; margin-top: .5rem; border-top: 1px solid #f0f0f0; }
+.pager-btn { background: none; border: 1px solid #ddd; border-radius: 6px; padding: .25rem .6rem;
+             font-size: .9rem; cursor: pointer; transition: all .15s; color: #333; line-height: 1; }
+.pager-btn:hover:not(:disabled) { background: #1a1a2e; color: #fff; border-color: #1a1a2e; }
+.pager-btn:disabled { opacity: .35; cursor: not-allowed; }
+.pager-info { font-size: .85rem; color: #555; padding: 0 .5rem; }
+.pager-size { font-size: .82rem; border: 1px solid #ddd; border-radius: 6px; padding: .25rem .4rem;
+              color: #555; cursor: pointer; margin-left: .5rem; }
 
 /* Detail overlay */
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 100;

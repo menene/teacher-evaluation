@@ -14,16 +14,21 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 
 
 @router.get("/summary")
-def get_summary(db: Session = Depends(get_db)):
+def get_summary(
+    year: int = None,
+    cycle: int = None,
+    code_prefix: str = None,
+    db: Session = Depends(get_db),
+):
     """
     Returns sentiment comment counts grouped by year + cycle.
-    Used to drive the grouped bar chart.
+    Used to drive the line chart.
     """
     pos_id = db.query(SentimentLabel.id).filter(SentimentLabel.label == "positive").scalar()
     neu_id = db.query(SentimentLabel.id).filter(SentimentLabel.label == "neutral").scalar()
     neg_id = db.query(SentimentLabel.id).filter(SentimentLabel.label == "negative").scalar()
 
-    rows = (
+    q = (
         db.query(
             Evaluation.year,
             Evaluation.cycle,
@@ -33,10 +38,12 @@ def get_summary(db: Session = Depends(get_db)):
             func.count(EvaluationComment.id).label("total"),
         )
         .join(EvaluationComment, EvaluationComment.evaluation_id == Evaluation.id)
-        .group_by(Evaluation.year, Evaluation.cycle)
-        .order_by(Evaluation.year, Evaluation.cycle)
-        .all()
     )
+    if year:        q = q.filter(Evaluation.year == year)
+    if cycle:       q = q.filter(Evaluation.cycle == cycle)
+    if code_prefix: q = q.filter(Evaluation.code_prefix == code_prefix)
+
+    rows = q.group_by(Evaluation.year, Evaluation.cycle).order_by(Evaluation.year, Evaluation.cycle).all()
 
     return [
         {
@@ -52,10 +59,84 @@ def get_summary(db: Session = Depends(get_db)):
     ]
 
 
+@router.get("/summary/by-code")
+def get_summary_by_code(
+    year: int = None,
+    cycle: int = None,
+    code_prefix: str = None,
+    db: Session = Depends(get_db),
+):
+    """Sentiment comment counts grouped by code_prefix."""
+    pos_id = db.query(SentimentLabel.id).filter(SentimentLabel.label == "positive").scalar()
+    neu_id = db.query(SentimentLabel.id).filter(SentimentLabel.label == "neutral").scalar()
+    neg_id = db.query(SentimentLabel.id).filter(SentimentLabel.label == "negative").scalar()
+
+    q = (
+        db.query(
+            Evaluation.code_prefix,
+            func.sum(case((EvaluationComment.sentiment_label_id == pos_id, 1), else_=0)).label("positive"),
+            func.sum(case((EvaluationComment.sentiment_label_id == neu_id, 1), else_=0)).label("neutral"),
+            func.sum(case((EvaluationComment.sentiment_label_id == neg_id, 1), else_=0)).label("negative"),
+        )
+        .join(EvaluationComment, EvaluationComment.evaluation_id == Evaluation.id)
+    )
+    if year:        q = q.filter(Evaluation.year == year)
+    if cycle:       q = q.filter(Evaluation.cycle == cycle)
+    if code_prefix: q = q.filter(Evaluation.code_prefix == code_prefix)
+
+    rows = q.group_by(Evaluation.code_prefix).order_by(Evaluation.code_prefix).all()
+    return [{"label": r.code_prefix, "positive": int(r.positive), "neutral": int(r.neutral), "negative": int(r.negative)} for r in rows]
+
+
+@router.get("/summary/by-cycle")
+def get_summary_by_cycle(
+    year: int = None,
+    cycle: int = None,
+    code_prefix: str = None,
+    db: Session = Depends(get_db),
+):
+    """Sentiment comment counts grouped by cycle."""
+    pos_id = db.query(SentimentLabel.id).filter(SentimentLabel.label == "positive").scalar()
+    neu_id = db.query(SentimentLabel.id).filter(SentimentLabel.label == "neutral").scalar()
+    neg_id = db.query(SentimentLabel.id).filter(SentimentLabel.label == "negative").scalar()
+
+    q = (
+        db.query(
+            Evaluation.cycle,
+            func.sum(case((EvaluationComment.sentiment_label_id == pos_id, 1), else_=0)).label("positive"),
+            func.sum(case((EvaluationComment.sentiment_label_id == neu_id, 1), else_=0)).label("neutral"),
+            func.sum(case((EvaluationComment.sentiment_label_id == neg_id, 1), else_=0)).label("negative"),
+        )
+        .join(EvaluationComment, EvaluationComment.evaluation_id == Evaluation.id)
+    )
+    if year:        q = q.filter(Evaluation.year == year)
+    if cycle:       q = q.filter(Evaluation.cycle == cycle)
+    if code_prefix: q = q.filter(Evaluation.code_prefix == code_prefix)
+
+    rows = q.group_by(Evaluation.cycle).order_by(Evaluation.cycle).all()
+    return [{"label": f"Ciclo {r.cycle}", "positive": int(r.positive), "neutral": int(r.neutral), "negative": int(r.negative)} for r in rows]
+
+
+@router.get("/filters")
+def get_filters(db: Session = Depends(get_db)):
+    """Distinct values for the Año, Ciclo, and Código filter dropdowns."""
+    years  = [r[0] for r in db.query(Evaluation.year).distinct().order_by(Evaluation.year.desc()).all()]
+    cycles = [r[0] for r in db.query(Evaluation.cycle).distinct().order_by(Evaluation.cycle).all()]
+    codes  = [r[0] for r in db.query(Evaluation.code_prefix).distinct().order_by(Evaluation.code_prefix).all()]
+    return {"years": years, "cycles": cycles, "codes": codes}
+
+
 @router.get("/evaluations")
-def list_evaluations(db: Session = Depends(get_db)):
-    """All evaluations with their aggregate sentiment score."""
-    rows = (
+def list_evaluations(
+    page: int = 1,
+    page_size: int = 25,
+    year: int = None,
+    cycle: int = None,
+    code_prefix: str = None,
+    db: Session = Depends(get_db),
+):
+    """Paginated evaluations with optional year/cycle/code_prefix filters."""
+    base = (
         db.query(
             Evaluation,
             func.avg(EvaluationComment.sentiment_compound).label("avg_compound"),
@@ -64,8 +145,21 @@ def list_evaluations(db: Session = Depends(get_db)):
         .outerjoin(EvaluationComment, EvaluationComment.evaluation_id == Evaluation.id)
         .group_by(Evaluation.id)
         .order_by(Evaluation.year.desc(), Evaluation.cycle.desc(), Evaluation.number)
-        .all()
     )
+
+    count_q = db.query(func.count(Evaluation.id))
+    if year:
+        base    = base.filter(Evaluation.year == year)
+        count_q = count_q.filter(Evaluation.year == year)
+    if cycle:
+        base    = base.filter(Evaluation.cycle == cycle)
+        count_q = count_q.filter(Evaluation.cycle == cycle)
+    if code_prefix:
+        base    = base.filter(Evaluation.code_prefix == code_prefix)
+        count_q = count_q.filter(Evaluation.code_prefix == code_prefix)
+
+    total = count_q.scalar()
+    rows = base.offset((page - 1) * page_size).limit(page_size).all()
 
     def label(avg):
         if avg is None:
@@ -76,20 +170,26 @@ def list_evaluations(db: Session = Depends(get_db)):
             return "negative"
         return "neutral"
 
-    return [
-        {
-            "id": ev.id,
-            "number": ev.number,
-            "code_prefix": ev.code_prefix,
-            "year": ev.year,
-            "cycle": ev.cycle,
-            "comment_count": count,
-            "average_compound": round(float(avg), 4) if avg is not None else None,
-            "overall_label": label(avg),
-            "uploaded_at": ev.uploaded_at,
-        }
-        for ev, avg, count in rows
-    ]
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": max(1, -(-total // page_size)),  # ceil division
+        "items": [
+            {
+                "id": ev.id,
+                "number": ev.number,
+                "code_prefix": ev.code_prefix,
+                "year": ev.year,
+                "cycle": ev.cycle,
+                "comment_count": count,
+                "average_compound": round(float(avg), 4) if avg is not None else None,
+                "overall_label": label(avg),
+                "uploaded_at": ev.uploaded_at,
+            }
+            for ev, avg, count in rows
+        ],
+    }
 
 
 @router.get("/evaluations/{evaluation_id}")
@@ -168,20 +268,34 @@ def get_topic_status(task_id: str):
 
 @router.get("/topics")
 def get_topics(db: Session = Depends(get_db)):
-    """Return all topics with keyword list and comment count."""
+    """Return all topics with keyword list, comment count, and sentiment distribution."""
+    pos_id = db.query(SentimentLabel.id).filter(SentimentLabel.label == "positive").scalar()
+    neu_id = db.query(SentimentLabel.id).filter(SentimentLabel.label == "neutral").scalar()
+    neg_id = db.query(SentimentLabel.id).filter(SentimentLabel.label == "negative").scalar()
+
     topics = db.query(Topic).order_by(Topic.id).all()
     result = []
     for t in topics:
-        count = (
-            db.query(func.count(EvaluationComment.id))
+        rows = (
+            db.query(
+                func.count(EvaluationComment.id).label("total"),
+                func.sum(case((EvaluationComment.sentiment_label_id == pos_id, 1), else_=0)).label("positive"),
+                func.sum(case((EvaluationComment.sentiment_label_id == neu_id, 1), else_=0)).label("neutral"),
+                func.sum(case((EvaluationComment.sentiment_label_id == neg_id, 1), else_=0)).label("negative"),
+            )
             .filter(EvaluationComment.topic_id == t.id)
-            .scalar()
+            .one()
         )
         result.append({
             "id": t.id,
             "keywords": json.loads(t.keywords),
             "weight": t.weight,
-            "comment_count": count,
+            "comment_count": int(rows.total),
+            "sentiment": {
+                "positive": int(rows.positive),
+                "neutral":  int(rows.neutral),
+                "negative": int(rows.negative),
+            },
             "created_at": t.created_at,
         })
     return result
