@@ -2,33 +2,34 @@
   <div>
     <div class="hero">
       <h1>🎓 Análisis de Evaluaciones Docentes</h1>
-      <p>Plataforma de análisis para las evaluaciones de profesores de la Universidad del Valle de Guatemala. Sube los PDFs generados por el sistema UVG, extrae comentarios de estudiantes, tradúcelos automáticamente al inglés y genera reportes comparativos de sentimiento y tópicos.</p>
+      <p>Plataforma de análisis para las evaluaciones de profesores de la Universidad del Valle de Guatemala. Procesa PDFs del sistema UVG e importaciones masivas desde CSV, traduce comentarios automáticamente y genera reportes comparativos de sentimiento y tópicos.</p>
     </div>
 
     <div class="cards">
       <router-link class="card" to="/upload">
         <div class="card-icon">📂</div>
         <h2>Subir Evaluaciones</h2>
-        <p>Sube uno o varios PDFs de evaluación. Los comentarios se extraen, traducen al inglés con DeepL y se puntúan automáticamente.</p>
+        <p>Sube uno o varios PDFs de evaluación. Los comentarios se extraen, traducen y puntúan automáticamente en segundo plano.</p>
         <span class="card-action">Ir a subir →</span>
       </router-link>
 
       <router-link class="card" to="/reports">
         <div class="card-icon">📈</div>
         <h2>Ver Reportes</h2>
-        <p>Compara sentimiento por año y ciclo, explora el detalle de cada evaluación y ejecuta el análisis de tópicos global bajo demanda.</p>
+        <p>Filtra por año, ciclo y código. Visualiza sentimiento en gráficas de línea y barras, explora tópicos con distribución de sentimiento y revisa el detalle de cada evaluación.</p>
         <span class="card-action">Ver reportes →</span>
       </router-link>
     </div>
 
+    <!-- Pipeline -->
     <div class="pipeline">
       <h3>Pipeline de procesamiento</h3>
       <div class="steps">
         <div class="step">
           <div class="step-icon">📄</div>
           <div class="step-body">
-            <strong>Extracción de PDF</strong>
-            <span>Detecta bloques de evaluación por <code>TABLA DE EVALUACIÓN</code>, extrae metadatos y comentarios delimitados por <code>•</code>. Soporta PDFs con múltiples evaluaciones.</span>
+            <strong>Extracción de PDF / CSV</strong>
+            <span>PDFs del sistema UVG o importación masiva desde CSV con <code>import_csv.py</code>. Soporta ~24k+ comentarios.</span>
           </div>
         </div>
         <div class="step-arrow">→</div>
@@ -36,7 +37,7 @@
           <div class="step-icon">🌐</div>
           <div class="step-body">
             <strong>Traducción automática</strong>
-            <span>Todos los comentarios en español se traducen al inglés (ES → EN-US) en lote usando la API de DeepL.</span>
+            <span>DeepL (primario) con fallback automático a <strong>LibreTranslate</strong> autoalojado. Sin límites de tokens.</span>
           </div>
         </div>
         <div class="step-arrow">→</div>
@@ -44,7 +45,7 @@
           <div class="step-icon">🧠</div>
           <div class="step-body">
             <strong>Análisis de sentimiento</strong>
-            <span>Ensemble VADER + TextBlob con léxico calibrado para contexto educativo. Puntaje compuesto −1.0 a +1.0 por comentario.</span>
+            <span>Ensemble VADER + TextBlob con léxico calibrado para feedback educativo. Puntaje −1.0 a +1.0 por comentario.</span>
           </div>
         </div>
         <div class="step-arrow">→</div>
@@ -52,19 +53,42 @@
           <div class="step-icon">🏷️</div>
           <div class="step-body">
             <strong>Modelado de tópicos</strong>
-            <span>NMF + TF-IDF global sobre todos los comentarios preprocesados. Se ejecuta bajo demanda desde la vista de Reportes.</span>
+            <span>NMF + TF-IDF global. Muestra distribución de sentimiento por tópico y nube de palabras con pesos NMF.</span>
           </div>
         </div>
       </div>
     </div>
 
+    <!-- Scripts -->
+    <div class="scripts-section">
+      <h3>Scripts de utilidad</h3>
+      <div class="scripts-grid">
+        <div class="script-card">
+          <code class="script-name">import_csv.py</code>
+          <span class="script-desc">Importa comentarios desde CSV agrupando por profesor, materia, ciclo y año.</span>
+          <code class="script-cmd">docker compose exec backend python import_csv.py data/archivo.csv</code>
+        </div>
+        <div class="script-card">
+          <code class="script-name">translate.py</code>
+          <span class="script-desc">Traduce todos los comentarios sin <code>comment_en</code>. Retoma donde se quedó si se interrumpe.</span>
+          <code class="script-cmd">docker compose exec backend python translate.py</code>
+        </div>
+        <div class="script-card">
+          <code class="script-name">rescore.py</code>
+          <span class="script-desc">Re-puntúa sentimiento en comentarios traducidos. Usa <code>--force</code> para re-puntuar todos.</span>
+          <code class="script-cmd">docker compose exec backend python rescore.py</code>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tech stack -->
     <div class="tech-grid">
       <div class="tech-card">
         <span class="tech-label">Backend</span>
         <div class="tool-list">
           <span class="tool"><img src="https://cdn.simpleicons.org/fastapi" class="tool-logo" alt="FastAPI" />FastAPI</span>
           <span class="tool"><img src="https://cdn.simpleicons.org/sqlalchemy" class="tool-logo" alt="SQLAlchemy" />SQLAlchemy</span>
-          <span class="tool"><img src="https://cdn.simpleicons.org/mariadb" class="tool-logo" alt="MariaDB" />MariaDB</span>
+          <span class="tool"><img src="https://cdn.simpleicons.org/mysql" class="tool-logo" alt="MySQL" />MySQL 8</span>
         </div>
       </div>
       <div class="tech-card">
@@ -74,6 +98,13 @@
           <span class="tool"><img src="https://cdn.simpleicons.org/python" class="tool-logo" alt="Python" />TextBlob</span>
           <span class="tool"><img src="https://cdn.simpleicons.org/python" class="tool-logo" alt="Python" />NLTK</span>
           <span class="tool"><img src="https://cdn.simpleicons.org/scikitlearn" class="tool-logo" alt="scikit-learn" />scikit-learn</span>
+        </div>
+      </div>
+      <div class="tech-card">
+        <span class="tech-label">Traducción</span>
+        <div class="tool-list">
+          <span class="tool"><img src="https://cdn.simpleicons.org/deepl" class="tool-logo" alt="DeepL" />DeepL</span>
+          <span class="tool"><img src="https://cdn.simpleicons.org/python" class="tool-logo" alt="LibreTranslate" />LibreTranslate</span>
         </div>
       </div>
       <div class="tech-card">
@@ -124,9 +155,21 @@
 .step-body code { background: #eee; padding: .05rem .3rem; border-radius: 4px; font-size: .75rem; }
 .step-arrow { font-size: 1.2rem; color: #bbb; align-self: center; flex-shrink: 0; }
 
+/* Scripts */
+.scripts-section { background: #fff; border-radius: 12px; padding: 1.75rem;
+                   box-shadow: 0 2px 8px rgba(0,0,0,.08); margin-bottom: 1.5rem; }
+.scripts-section h3 { font-size: 1.05rem; margin-bottom: 1.25rem; color: #1a1a2e; }
+.scripts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
+.script-card { background: #f8f8ff; border: 1px solid #e0e0f0; border-radius: 10px;
+               padding: 1rem; display: flex; flex-direction: column; gap: .5rem; }
+.script-name { font-size: .9rem; font-weight: 700; color: #1a1a2e; }
+.script-desc { font-size: .82rem; color: #666; line-height: 1.45; }
+.script-desc code { background: #eee; padding: .05rem .3rem; border-radius: 4px; font-size: .75rem; }
+.script-cmd { font-size: .75rem; background: #1a1a2e; color: #a5f3c0; padding: .45rem .65rem;
+              border-radius: 6px; word-break: break-all; line-height: 1.5; }
+
 /* Tech stack */
-.tech-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-             gap: 1rem; }
+.tech-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1rem; }
 .tech-card { background: #fff; border-radius: 10px; padding: .9rem 1.1rem;
              box-shadow: 0 2px 8px rgba(0,0,0,.06); display: flex; flex-direction: column; gap: .6rem; }
 .tech-label { font-size: .72rem; font-weight: 700; text-transform: uppercase;

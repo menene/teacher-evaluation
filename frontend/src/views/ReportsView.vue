@@ -79,8 +79,16 @@
         <div class="topics-grid">
           <div v-for="t in topics" :key="t.id" class="topic-card">
             <div class="topic-num">Tópico {{ t.id }}</div>
-            <div class="topic-keywords">
-              <span v-for="kw in t.keywords" :key="kw" class="kw-chip">{{ kw }}</span>
+            <div class="topic-wc">
+              <span
+                v-for="kw in t.keywords" :key="kw.word"
+                class="wc-word"
+                :style="{
+                  fontSize: (10 + Math.round(kw.weight * 14)) + 'px',
+                  opacity: 0.5 + kw.weight * 0.5,
+                  color: kw.weight > 0.7 ? '#1a1a2e' : kw.weight > 0.4 ? '#3949ab' : '#7986cb',
+                }"
+              >{{ kw.word }}</span>
             </div>
             <div class="topic-sentiment-bar" :title="`${t.sentiment.positive} pos · ${t.sentiment.neutral} neu · ${t.sentiment.negative} neg`">
               <div class="tsb-pos" :style="{ flex: t.sentiment.positive }"></div>
@@ -253,6 +261,7 @@ const topicsDate = ref("");
 const topicRunning = ref(false);
 const nTopics = ref(5);
 let topicPollTimer = null;
+
 
 async function loadTopics() {
   const res = await api.get("/reports/topics");
@@ -463,9 +472,9 @@ h1 { margin-bottom: .4rem; }
               padding: .85rem 1rem; }
 .topic-num { font-size: .75rem; font-weight: 700; color: #1a1a2e; text-transform: uppercase;
              letter-spacing: .05em; margin-bottom: .45rem; }
-.topic-keywords { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: .5rem; }
-.kw-chip { background: #e8eaf6; color: #3949ab; font-size: .75rem; font-weight: 600;
-           padding: .15rem .5rem; border-radius: 12px; }
+.topic-wc { display: flex; flex-wrap: wrap; gap: .3rem .5rem; align-items: baseline;
+            padding: .4rem 0; min-height: 80px; }
+.wc-word { font-weight: 600; line-height: 1.3; transition: opacity .15s; cursor: default; }
 .topic-sentiment-bar { display: flex; height: 6px; border-radius: 4px; overflow: hidden;
                        margin: .55rem 0 .3rem; background: #eee; }
 .tsb-pos { background: #4caf8a; }

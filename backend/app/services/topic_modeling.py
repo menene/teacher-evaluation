@@ -67,10 +67,14 @@ def run_topic_modeling(n_topics: int = 5, n_top_words: int = 8) -> list[dict]:
         topic_objs = []
         for idx, component in enumerate(model.components_):
             top_indices = component.argsort()[: -(n_top_words + 1) : -1]
-            keywords = [feature_names[i] for i in top_indices]
+            max_w = float(component.max()) or 1.0
+            keywords = [
+                {"word": feature_names[i], "weight": round(float(component[i]) / max_w, 4)}
+                for i in top_indices
+            ]
             topic = Topic(
                 keywords=json.dumps(keywords),
-                weight=float(component.max()),
+                weight=max_w,
             )
             db.add(topic)
             topic_objs.append(topic)

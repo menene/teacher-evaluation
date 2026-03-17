@@ -217,7 +217,11 @@ def get_evaluation_detail(evaluation_id: int, db: Session = Depends(get_db)):
         if avg <= -0.05: return "negative"
         return "neutral"
 
-    topic_map = {t.id: json.loads(t.keywords) for t in db.query(Topic).all()}
+    def _words(raw):
+        """Extract word strings from either [{word, weight}] or legacy [str] format."""
+        return [k["word"] if isinstance(k, dict) else k for k in raw]
+
+    topic_map = {t.id: _words(json.loads(t.keywords)) for t in db.query(Topic).all()}
 
     return {
         "id": ev.id,
@@ -286,9 +290,17 @@ def get_topics(db: Session = Depends(get_db)):
             .filter(EvaluationComment.topic_id == t.id)
             .one()
         )
+        raw = json.loads(t.keywords)
+        # Normalise: handle both legacy ["word"] and new [{"word", "weight"}] formats
+        n = len(raw)
+        keywords = [
+            k if isinstance(k, dict)
+            else {"word": k, "weight": round(1.0 - (i / n), 4)}
+            for i, k in enumerate(raw)
+        ]
         result.append({
             "id": t.id,
-            "keywords": json.loads(t.keywords),
+            "keywords": keywords,
             "weight": t.weight,
             "comment_count": int(rows.total),
             "sentiment": {

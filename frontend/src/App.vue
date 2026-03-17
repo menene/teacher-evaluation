@@ -1,7 +1,9 @@
 <template>
   <div id="layout">
     <nav>
-      <span class="brand">📊 Evaluaciones UVG</span>
+      <span class="brand">
+        <router-link to="/">Evaluaciones UVG</router-link>
+      </span>
       <router-link to="/">Inicio</router-link>
       <router-link to="/upload">Subir</router-link>
       <router-link to="/reports">Reportes</router-link>
