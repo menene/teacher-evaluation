@@ -1,0 +1,37 @@
+# ─── Web Framework ────────────────────────────────────────────────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9        # required for file uploads
+
+# ─── Database ─────────────────────────────────────────────────────────────────
+sqlalchemy>=2.0.0
+pymysql>=1.1.0
+cryptography>=42.0.0           # required by pymysql auth plugin
+alembic>=1.13.0                # database migrations
+
+# ─── PDF Parsing ──────────────────────────────────────────────────────────────
+pdfplumber>=0.11.0
+
+# ─── Task Queue ───────────────────────────────────────────────────────────────
+celery[redis]>=5.3.0
+
+# ─── NLP — Sentiment Analysis ─────────────────────────────────────────────────
+vaderSentiment>=3.3.2          # rule-based, lightweight, no model download
+textblob>=0.18.0               # simple polarity / subjectivity scores
+
+# ─── NLP — Topic Modeling ─────────────────────────────────────────────────────
+scikit-learn>=1.4.0            # TF-IDF + NMF / LDA
+gensim>=4.3.0                  # LDA with coherence scoring
+nltk>=3.8.0                    # tokenisation, stopwords
+
+# ─── NLP — Deep Learning (optional, ~2 GB download) ──────────────────────────
+# Uncomment to use HuggingFace transformer models for sentiment / zero-shot topics
+# torch>=2.3.0
+# transformers>=4.40.0
+
+# ─── Translation ──────────────────────────────────────────────────────────────
+deepl>=1.18.0
+
+# ─── Config & Utilities ───────────────────────────────────────────────────────
+python-dotenv>=1.0.0
+pydantic-settings>=2.2.0
