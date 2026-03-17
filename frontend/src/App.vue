@@ -7,6 +7,7 @@
       <router-link to="/">Inicio</router-link>
       <router-link to="/upload">Subir</router-link>
       <router-link to="/reports">Reportes</router-link>
+      <router-link to="/docs">Docs</router-link>
     </nav>
     <main>
       <router-view />

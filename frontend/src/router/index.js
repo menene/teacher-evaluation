@@ -17,6 +17,11 @@ const routes = [
     name: "reports",
     component: () => import("../views/ReportsView.vue"),
   },
+  {
+    path: "/docs",
+    name: "docs",
+    component: () => import("../views/DocsView.vue"),
+  },
 ];
 
 export default createRouter({
