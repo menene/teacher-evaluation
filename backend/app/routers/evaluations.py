@@ -12,6 +12,8 @@ from app.db.session import get_db
 from app.models.evaluation import Evaluation
 from app.models.job import Job
 from app.services.pdf_parser import parse_pdf
+from app.services.sentiment import _score
+from app.services.translation import translate_texts
 from app.worker.tasks import process_pdf
 
 router = APIRouter(prefix="/evaluations", tags=["evaluations"])
@@ -21,7 +23,7 @@ UPLOADS_DIR = "/app/uploads"
 
 @router.post("/upload/analyze")
 async def upload_analyze(files: List[UploadFile] = File(...)):
-    """Parse PDFs and return extracted data without saving to DB."""
+    """Parse PDFs, translate comments, run sentiment — without saving to DB."""
     results = []
     for file in files:
         if not file.filename or not file.filename.lower().endswith(".pdf"):
@@ -34,6 +36,16 @@ async def upload_analyze(files: List[UploadFile] = File(...)):
         finally:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
+
+        for evaluation in evaluations:
+            raw_comments = evaluation.get("comments", [])
+            if raw_comments:
+                translated = translate_texts(raw_comments)
+                evaluation["comments"] = [
+                    {"text": raw, "text_en": en, **_score(en)}
+                    for raw, en in zip(raw_comments, translated)
+                ]
+
         results.append({"filename": file.filename, "evaluations": evaluations})
     return results
 

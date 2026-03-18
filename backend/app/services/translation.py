@@ -28,6 +28,18 @@ def _translate_libretranslate(texts: list[str]) -> list[str]:
     return translated
 
 
+def translate_texts(texts: list[str]) -> list[str]:
+    """Translate a list of texts in-memory (no DB). Used for preview analysis."""
+    if not texts:
+        return []
+    if settings.DEEPL_API_KEY:
+        try:
+            return _translate_deepl(texts)
+        except Exception as e:
+            logger.warning("DeepL failed (%s), falling back to LibreTranslate", e)
+    return _translate_libretranslate(texts)
+
+
 def translate_evaluation_comments(evaluation_id: int) -> None:
     """Translate all untranslated comments for an evaluation.
 

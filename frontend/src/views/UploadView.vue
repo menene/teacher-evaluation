@@ -135,11 +135,24 @@
             <div class="field"><span class="label">Año</span><span class="value">{{ ev.fields.year ?? '—' }}</span></div>
             <div class="field"><span class="label">Ciclo</span><span class="value">{{ ev.fields.cycle ?? '—' }}</span></div>
             <div class="field"><span class="label">Código</span><span class="value">{{ ev.fields.code_prefix ?? '—' }}</span></div>
+            <div v-if="ev.average_compound != null" class="field">
+              <span class="label">Puntaje promedio</span>
+              <span class="value" :style="{ color: sentimentColor(ev.average_compound) }">{{ ev.average_compound.toFixed(2) }}</span>
+            </div>
+            <div v-if="ev.overall_label" class="field">
+              <span class="label">Sentimiento general</span>
+              <span :class="['sentiment-badge', ev.overall_label]">{{ sentimentEmoji(ev.overall_label) }} {{ ev.overall_label }}</span>
+            </div>
           </div>
           <div v-if="ev.comments?.length" class="comments">
             <h3>💬 Comentarios ({{ ev.comments.length }})</h3>
             <ul>
-              <li v-for="(c, j) in ev.comments" :key="j">{{ c }}</li>
+              <li v-for="(c, j) in ev.comments" :key="j">
+                <span class="comment-text">{{ c.text }}</span>
+                <span v-if="c.compound != null" :class="['comment-badge', c.label]">
+                  {{ sentimentEmoji(c.label) }} {{ c.compound.toFixed(2) }}
+                </span>
+              </li>
             </ul>
           </div>
           <div v-else class="no-comments-warning">
@@ -171,8 +184,8 @@ const FUN_WORDS = {
   topics:      ["Buscando patrones ocultos…", "Modelando temas…", "Agrupando ideas…", "Aplicando magia estadística…"],
 };
 
-const PREVIEW_STEPS = ["Leyendo PDF", "Extrayendo datos", "Listo"];
-const PREVIEW_FUN = ["Leyendo entre líneas…", "Extrayendo el alma del PDF…", "Casi listo…", "Sobreviviendo al parser…"];
+const PREVIEW_STEPS = ["Leyendo PDF", "Extrayendo datos", "Traduciendo", "Analizando sentimiento", "Listo"];
+const PREVIEW_FUN = ["Leyendo entre líneas…", "Extrayendo el alma del PDF…", "Cruzando el charco lingüístico…", "Midiendo la temperatura…", "Casi listo…"];
 
 const files = ref([]);
 const dragging = ref(false);
@@ -315,7 +328,12 @@ async function analyze() {
     previewStep.value = PREVIEW_STEPS.length - 1;
     previewResults.value = res.data.map((item) => ({
       filename: item.filename,
-      evaluations: item.evaluations,
+      evaluations: item.evaluations.map((ev) => {
+        const scored = (ev.comments ?? []).filter((c) => c.compound != null);
+        const avg = scored.length ? scored.reduce((s, c) => s + c.compound, 0) / scored.length : null;
+        const overall_label = avg == null ? null : avg >= 0.05 ? "positive" : avg <= -0.05 ? "negative" : "neutral";
+        return { ...ev, average_compound: avg != null ? Math.round(avg * 10000) / 10000 : null, overall_label };
+      }),
     }));
     files.value = [];
   } catch (e) {
