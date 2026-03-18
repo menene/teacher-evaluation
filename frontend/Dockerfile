@@ -10,4 +10,4 @@ COPY . .
 EXPOSE 5173
 
 # --host 0.0.0.0 makes Vite listen on all interfaces inside the container
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+CMD ["sh", "-c", "npm install && npm run dev"]
