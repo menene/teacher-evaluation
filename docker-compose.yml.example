@@ -1,6 +1,17 @@
 services:
+  libretranslate:
+    image: libretranslate/libretranslate:latest
+    container_name: teacher_libretranslate
+    restart: unless-stopped
+    environment:
+      LT_LOAD_ONLY: "es,en"
+      LT_DISABLE_WEB_UI: "true"
+    volumes:
+      - libretranslate_data:/home/libretranslate/.local
+    networks: [teacher_net]
+
   db:
-    image: mysql:8.0
+    image: mariadb:11.4
     container_name: teacher_db
     restart: unless-stopped
     env_file:
@@ -89,3 +100,4 @@ networks:
 volumes:
   db_data:
   uploads_data:
+  libretranslate_data:
